@@ -12,7 +12,7 @@ namespace api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize] // all endpoints require login
+[Authorize] // Alla endpoints behöver autentisering
 public class TodoController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -25,11 +25,11 @@ public class TodoController : ControllerBase
         _userManager = userManager;
     }
 
-    // Get tasks for the logged-in user and admin
+    // Admin och användare kan se sina egna uppgifter
     [HttpGet]
     public async Task<IActionResult> GetUserTasks()
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier); // get user ID 
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier); // användarens id från token 
 
         var tasks = await _context.TodoItems
             .Where(t => t.UserId == userId)
@@ -45,9 +45,26 @@ public class TodoController : ControllerBase
         return Ok(tasks);
     }
 
-    // User adds a new task for themselves
-    [HttpPost]
-    [Authorize]
+    // Admin kan se alla uppgifter för en specifik användare
+    [HttpGet("admin-get-tasks/{userId}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> AdminGetUserTasks(string userId)
+    {
+        var tasks = await _context.TodoItems
+            .Where(t => t.UserId == userId)
+            .Select(t => new
+            {
+                t.Id,
+                t.Task,
+                t.DueDate,
+                t.Complete
+            })
+            .ToListAsync();
+
+        return Ok(tasks);
+    }
+
+    // Admin och användare kan lägga till uppgifter till sig själva
     [HttpPost]
     [Authorize]
     public async Task<IActionResult> AddTask([FromBody] TodoPostViewModel model)
@@ -58,27 +75,25 @@ public class TodoController : ControllerBase
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null) return Unauthorized();
 
-        // Sanitize input
         var sanitizedTask = _htmlSanitizer.Sanitize(model.Task);
 
-        // Check if sanitized task is empty
         if (string.IsNullOrWhiteSpace(sanitizedTask))
         {
-            ModelState.AddModelError(nameof(model.Task), "Task cannot be empty.");
+            ModelState.AddModelError(nameof(model.Task), "Task cannot me empty");
             return ValidationProblem(ModelState);
         }
-
         var task = new TodoItem
         {
             Task = sanitizedTask,
-            DueDate = model.DueDate ?? DateTime.UtcNow.AddDays(7),
-            Complete = false,
+            DueDate = model.DueDate ?? DateTime.UtcNow.AddDays(7), //lägger till 7 dagar som standard ifall ingen förfallodatum anges
+            Complete = false, //nya tasks är inte kompletta
             UserId = userId
         };
 
         _context.TodoItems.Add(task);
         await _context.SaveChangesAsync();
 
+        //Fick göra såhär för jag var fast i en json loop annars
         return Ok(new
         {
             task.Id,
@@ -88,14 +103,15 @@ public class TodoController : ControllerBase
             User = new { user.Id, user.Email }
         });
     }
-    // For admins to assign tasks to any user
+
+    // Admin kan tilldela uppgifter till andra användare
     [HttpPost("assign")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> AssignTask([FromBody] AssignTaskViewModel model)
     {
         if (!ModelState.IsValid) return ValidationProblem(ModelState);
 
-        var user = await _userManager.FindByEmailAsync(model.Username);
+        var user = await _userManager.FindByEmailAsync(model.Email);
         if (user == null) return NotFound("User not found");
 
         var sanitizedTask = _htmlSanitizer.Sanitize(model.Task);
@@ -103,20 +119,19 @@ public class TodoController : ControllerBase
         var task = new TodoItem
         {
             Task = sanitizedTask,
-            DueDate = model.DueDate ?? DateTime.UtcNow.AddDays(7), // default due date like before
+            DueDate = model.DueDate ?? DateTime.UtcNow.AddDays(7),
             Complete = false,
             UserId = user.Id
         };
 
         _context.TodoItems.Add(task);
         await _context.SaveChangesAsync();
-
         return Ok(task);
     }
 
-    // Update a task
+    //Admin och användare kan uppdatera sina egna uppgifter
     [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateTask(string id, [FromBody] TodoPostViewModel updatedTask)
+    public async Task<IActionResult> UpdateTask(string id, [FromBody] TodoPutViewModel updatedTask)
     {
         if (!ModelState.IsValid) return ValidationProblem(ModelState);
 
@@ -127,15 +142,32 @@ public class TodoController : ControllerBase
 
         if (task == null) return NotFound();
 
-        // sanitize updates
         task.Task = _htmlSanitizer.Sanitize(updatedTask.Task);
-        task.DueDate = updatedTask.DueDate?? DateTime.UtcNow.AddDays(7);
+        task.DueDate = updatedTask.DueDate ?? DateTime.UtcNow.AddDays(7);
+        task.Complete = updatedTask.Complete;
 
         await _context.SaveChangesAsync();
         return Ok();
     }
 
-    // Delete a task
+    // Admin kan uppdatera uppgifter för en annan användare
+    [HttpPut("admin-update/{id}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> AdminUpdateTask(string id, [FromBody] TodoPutViewModel updatedTask)
+    {
+        var task = await _context.TodoItems.FirstOrDefaultAsync(t => t.Id == id);
+        if (task == null) return NotFound();
+
+        task.Task = updatedTask.Task;
+        task.DueDate = updatedTask.DueDate ?? DateTime.UtcNow.AddDays(7);
+        task.Complete = updatedTask.Complete;
+
+        await _context.SaveChangesAsync();
+        return Ok();
+    }
+
+
+    // Admin och användare kan ta bort sina egna uppgifter
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTask(string id)
     {
@@ -152,7 +184,7 @@ public class TodoController : ControllerBase
         return Ok("Task deleted successfully");
     }
 
-    // For admins to delete a task for any user
+    // Admin kan ta bort tasks för andra användare
     [HttpDelete("admin-remove/{taskId}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> AdminRemoveTask(string taskId)
@@ -163,6 +195,6 @@ public class TodoController : ControllerBase
         _context.TodoItems.Remove(task);
         await _context.SaveChangesAsync();
 
-        return Ok($"Task '{task.Task}' (ID: {task.Id}) removed successfully.");
+        return Ok();
     }
 }

@@ -7,13 +7,13 @@ using Microsoft.AspNetCore.Identity;
 
 namespace api.Entities;
 
-//creating an entity for TodoItem
-//using UserId as foreign key to link TodoItems to users
 public class TodoItem
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public required string Task { get; set; }
     public DateTime DueDate { get; set; }
+    
+    //Tänkar att en ny todo är inte complete när den skapas
     public bool Complete { get; set; } = false;
     public required string UserId { get; set; }
 

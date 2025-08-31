@@ -11,7 +11,7 @@ using api.Data;
 namespace api.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20250826182639_NewCreate")]
+    [Migration("20250831215551_NewCreate")]
     partial class NewCreate
     {
         /// <inheritdoc />

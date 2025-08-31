@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Identity;
 using api.Entities;
 
 
@@ -20,7 +19,7 @@ namespace api.Data
                 .HasMany(u => u.Tasks)
                 .WithOne(t => t.User)
                 .HasForeignKey(t => t.UserId)
-                .OnDelete(DeleteBehavior.Cascade);// deletes todos if user is deleted
+                .OnDelete(DeleteBehavior.Cascade);// När en användare tas bort, ta bort deras uppgifter också
         }
     }
         

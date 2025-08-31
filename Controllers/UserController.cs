@@ -1,10 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using api.Entities;
 using api.ViewModels;
 using Ganss.Xss;
@@ -18,6 +14,8 @@ public class UserController(SignInManager<User> signInManager) : ControllerBase
 {
     private readonly HtmlSanitizer _htmlSanitizer = new();
 
+
+    //Admin och användare kan logga in
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginViewModel model)
     {
@@ -31,20 +29,22 @@ public class UserController(SignInManager<User> signInManager) : ControllerBase
 
         if (!ModelState.IsValid) return ValidationProblem();
 
-        // Try to sign the user in (this will issue the auth cookie if valid)
+        //Logga in användaren med cookie authentication
         var result = await signInManager.PasswordSignInAsync(
             model.Email,
             model.Password,
-            isPersistent: false, // session cookie, expires when browser closes
+            isPersistent: false, // Cookien går bort när webbläsaren stängs
             lockoutOnFailure: false
         );
 
-        if (result.Succeeded) return Ok("Login successful! (cookie issued)");
+        if (result.Succeeded) return Ok();
 
         return Unauthorized("Invalid login attempt");
     }
 
-
+    //Admin kan registrera nya användare
+    //Jag har valt att göra denna delen utan roles
+    //Admin kan "Promota" en användare till Admin senare
     [HttpPost("register")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> RegisterUser([FromBody] UserRegisterViewModel model)
@@ -80,33 +80,62 @@ public class UserController(SignInManager<User> signInManager) : ControllerBase
         return ValidationProblem();
     }
 
+    //Admin kan promota en användare till Admin
+    [HttpPost("make-admin/{id}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> MakeUserAdmin(string id)
+    {
+        var user = await signInManager.UserManager.FindByIdAsync(id);
+        if (user == null) return NotFound("User not found");
 
-   [HttpGet("all-users")]
-[Authorize(Roles = "Admin")]
-public async Task<IActionResult> GetAllUsers()
-{
-    var users = await signInManager.UserManager.Users
-        .Include(u => u.Tasks) // <-- eager load the tasks
-        .Select(u => new
+        var result = await signInManager.UserManager.AddToRoleAsync(user, "Admin");
+        if (!result.Succeeded)
         {
-            u.Id,
-            u.FirstName,
-            u.LastName,
-            u.Email,
-            Tasks = u.Tasks.Select(t => new 
+            foreach (var error in result.Errors)
             {
-                t.Id,
-                t.Task,
-                t.DueDate,
-                t.Complete
-            }).ToList()
-        })
-        .ToListAsync();
+                ModelState.AddModelError(string.Empty, error.Description);
+            }
+            return ValidationProblem(ModelState);
+        }
 
-    return Ok(users);
-}
+        return Ok("User promoted to admin");
+    }
 
-    // ADMIN: delete a user
+
+    //Admin kan se alla användare + deras tasks
+    [HttpGet("all-users")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetAllUsers()
+    {
+        var users = await signInManager.UserManager.Users
+            .Include(u => u.Tasks)
+            .ToListAsync();
+
+        var userList = new List<GetAllUsersViewModel>();
+
+        foreach (var user in users)
+        {
+            var roles = await signInManager.UserManager.GetRolesAsync(user);
+            userList.Add(new GetAllUsersViewModel
+            {
+                Id = user.Id,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email,
+                Roles = roles.ToList(),
+                Tasks = user.Tasks.Select(t => new TodoGetViewModel
+                {
+                    Task = t.Task,
+                    DueDate = t.DueDate,
+                    Complete = t.Complete
+                }).ToList()
+            });
+        }
+
+        return Ok(userList);
+    }
+
+    // Admin kan ta bort en användare
     [HttpDelete("{id}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteUser(string id)
@@ -127,6 +156,7 @@ public async Task<IActionResult> GetAllUsers()
         return Ok("User deleted successfully");
     }
 
+    //Admin och användare kan logga ut 
     [HttpPost("logout")]
     public async Task<ActionResult> Logout()
     {

@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using api.Entities;
 using Microsoft.AspNetCore.Identity;
 
@@ -14,7 +10,7 @@ public class InitializeDb
         UserManager<User> userManager,
         RoleManager<IdentityRole> roleManager)
     {
-        // 1. Create roles if none exist
+        // 1. skapar roles om inte de finns
         var roles = new[] { "Admin", "User" };
         foreach (var role in roles)
         {
@@ -24,7 +20,7 @@ public class InitializeDb
             }
         }
 
-        // 2. Seed dedicated Admin user
+        // 2. Skapar en default admin användare 
         var adminEmail = "olgaadmin@gmail.com";
         var adminUser = await userManager.FindByEmailAsync(adminEmail);
 
@@ -50,8 +46,8 @@ public class InitializeDb
             }
         }
 
-        // 3. Seed demo users if none exist
-        if (!userManager.Users.Any(u => u.Email != adminEmail)) // only if no regular users exist
+        // 3. Skapar några vanliga användare
+        if (!userManager.Users.Any(u => u.Email != adminEmail)) 
         {
             var users = new List<User>
             {
@@ -60,6 +56,7 @@ public class InitializeDb
                 new() { UserName = "dmitri@gmail.com", Email = "dmitri@gmail.com", FirstName = "Dmitri", LastName = "Babkin" }
             };
 
+            //De ska alla få samma lösenord och roll "User"
             foreach (var user in users)
             {
                 var result = await userManager.CreateAsync(user, "Password123!");
@@ -70,7 +67,7 @@ public class InitializeDb
             }
         }
 
-        // 4. Seed TodoItems for the first non-admin user
+        // 4. Skapar några todo items för varje användare
         if (!context.TodoItems.Any())
         {
             var users = userManager.Users.Where(u => u.Email != adminEmail).ToList();

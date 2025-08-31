@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using System.ComponentModel.DataAnnotations;
 
 namespace api.ViewModels;
@@ -14,5 +10,7 @@ public class LoginViewModel
     public string Email { get; set; }
 
     [Required]
+    [MinLength(6, ErrorMessage = "Password must be at least 6 characters.")]
+    [MaxLength(30, ErrorMessage = "Password cannot be longer than 30 characters.")]
     public string Password { get; set; }
 }
